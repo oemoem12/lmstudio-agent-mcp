@@ -1,0 +1,36 @@
+{
+  "name": "lmstudio-agent-mcp",
+  "version": "1.0.0",
+  "description": "MCP server providing agent capabilities for LM Studio: file I/O, terminal execution, and web search.",
+  "main": "index.js",
+  "bin": {
+    "lmstudio-agent-mcp": "./bin/server.js"
+  },
+  "scripts": {
+    "start": "node bin/server.js",
+    "setup": "pip install -r requirements.txt"
+  },
+  "keywords": [
+    "mcp",
+    "lmstudio",
+    "agent",
+    "model-context-protocol",
+    "file-io",
+    "terminal",
+    "web-search"
+  ],
+  "author": "oemoem12",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oemoem12/lmstudio-agent-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oemoem12/lmstudio-agent-mcp/issues"
+  },
+  "homepage": "https://github.com/oemoem12/lmstudio-agent-mcp#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "preferGlobal": true
+}
