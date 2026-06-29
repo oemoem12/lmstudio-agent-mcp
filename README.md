@@ -9,7 +9,7 @@ A lightweight MCP (Model Context Protocol) server that provides local agent capa
 | `agent_read_file` | Read text files with offset/limit pagination and encoding support |
 | `agent_write_file` | Write or append to files, with optional parent directory creation |
 | `agent_execute_command` | Execute shell commands with pipes, redirections, custom working directory, environment variables, and configurable timeout |
-| `agent_web_search` | Search the web via DuckDuckGo (no API key required), returning titles, URLs, and snippets |
+| `agent_web_search` | Search the web via DuckDuckGo, Bing, Google, or Baidu (switchable), returning titles, URLs, and snippets |
 
 ## Requirements
 
@@ -95,13 +95,14 @@ Execute a terminal command.
 
 ### agent_web_search
 
-Search the web via DuckDuckGo.
+Search the web using multiple search engines.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `query` | string | *(required)* | Search query (1-500 chars) |
+| `engine` | string | `"duckduckgo"` | Search engine: `duckduckgo`, `bing`, `google`, or `baidu` |
 | `num_results` | int | `5` | Maximum results to return (1-20) |
-| `region` | string \| null | `null` | DuckDuckGo region code (e.g. `wt-wt`, `us-en`, `zh-cn`) |
+| `region` | string \| null | `null` | Region/locale code (e.g. `wt-wt`, `us-en`, `zh-cn`) |
 
 ## Security Notes
 

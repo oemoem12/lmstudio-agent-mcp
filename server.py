@@ -5,7 +5,7 @@ LM Studio Agent MCP Server.
 Provides local agent tools for LM Studio via the Model Context Protocol (MCP):
 - Read and write files
 - Execute terminal commands
-- Search the web via DuckDuckGo
+- Search the web via multiple engines (DuckDuckGo, Bing, Google, Baidu)
 
 Transport: stdio (default, suitable for LM Studio local MCP integration).
 """
@@ -16,6 +16,7 @@ import asyncio
 import json
 import os
 import shlex
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -60,6 +61,15 @@ def _format_success(data: Dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # Input models
 # ---------------------------------------------------------------------------
+
+class SearchEngine(str, Enum):
+    """Supported search engines."""
+
+    DUCKDUCKGO = "duckduckgo"
+    BING = "bing"
+    GOOGLE = "google"
+    BAIDU = "baidu"
+
 
 class ReadFileInput(BaseModel):
     """Input model for reading a file."""
@@ -112,8 +122,174 @@ class WebSearchInput(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     query: str = Field(..., description="Search query string.", min_length=1, max_length=500)
+    engine: SearchEngine = Field(default=SearchEngine.DUCKDUCKGO, description="Search engine to use: 'duckduckgo', 'bing', 'google', or 'baidu'.")
     num_results: int = Field(default=5, description="Maximum number of results to return.", ge=1, le=20)
-    region: Optional[str] = Field(default=None, description="Optional DuckDuckGo region code (e.g. 'wt-wt', 'us-en', 'zh-cn').")
+    region: Optional[str] = Field(default=None, description="Optional region/locale code for search results (e.g. 'wt-wt', 'us-en', 'zh-cn').")
+
+
+# ---------------------------------------------------------------------------
+# Search engine implementations
+# ---------------------------------------------------------------------------
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+}
+
+
+async def _search_duckduckgo(query: str, num_results: int, region: Optional[str]) -> List[Dict[str, Optional[str]]]:
+    """Search via DuckDuckGo HTML interface."""
+    search_url = "https://html.duckduckgo.com/html/"
+    payload: Dict[str, str] = {"q": query}
+    if region:
+        payload["kl"] = region
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+        response = await client.post(search_url, data=payload, headers=_HEADERS)
+        response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    results: List[Dict[str, Optional[str]]] = []
+
+    for result in soup.select(".result"):
+        title_tag = result.select_one(".result__a")
+        snippet_tag = result.select_one(".result__snippet")
+        if not title_tag:
+            continue
+
+        results.append({
+            "title": title_tag.get_text(strip=True),
+            "url": title_tag.get("href"),
+            "snippet": snippet_tag.get_text(strip=True) if snippet_tag else "",
+        })
+        if len(results) >= num_results:
+            break
+
+    if not results:
+        for link in soup.select("a.result__a"):
+            title = link.get_text(strip=True)
+            href = link.get("href")
+            if title and href:
+                results.append({"title": title, "url": href, "snippet": ""})
+            if len(results) >= num_results:
+                break
+
+    return results
+
+
+async def _search_bing(query: str, num_results: int, region: Optional[str]) -> List[Dict[str, Optional[str]]]:
+    """Search via Bing HTML interface."""
+    search_url = "https://www.bing.com/search"
+    params: Dict[str, str] = {"q": query, "count": str(min(num_results, 50))}
+    if region:
+        params["cc"] = region
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+        response = await client.get(search_url, params=params, headers=_HEADERS)
+        response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    results: List[Dict[str, Optional[str]]] = []
+
+    for li in soup.select("li.b_algo"):
+        title_tag = li.select_one("h2 a")
+        snippet_tag = li.select_one("p, .b_caption p")
+        if not title_tag:
+            continue
+
+        results.append({
+            "title": title_tag.get_text(strip=True),
+            "url": title_tag.get("href"),
+            "snippet": snippet_tag.get_text(strip=True) if snippet_tag else "",
+        })
+        if len(results) >= num_results:
+            break
+
+    return results
+
+
+async def _search_google(query: str, num_results: int, region: Optional[str]) -> List[Dict[str, Optional[str]]]:
+    """Search via Google HTML interface (limited results due to anti-scraping)."""
+    search_url = "https://www.google.com/search"
+    params: Dict[str, str] = {"q": query, "num": str(min(num_results, 20))}
+    if region:
+        params["hl"] = region
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+        response = await client.get(search_url, params=params, headers=_HEADERS)
+        response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    results: List[Dict[str, Optional[str]]] = []
+
+    for div in soup.select("div.g"):
+        title_tag = div.select_one("h3")
+        snippet_tag = div.select_one("div.VwiC3b, div[style*='-webkit-line-clamp']")
+        link_tag = div.select_one("a")
+        if not title_tag:
+            continue
+
+        url = link_tag.get("href", "") if link_tag else ""
+        if url.startswith("/url?q="):
+            from urllib.parse import parse_qs, urlparse
+            parsed = urlparse(url)
+            qs = parse_qs(parsed.query)
+            url = qs.get("q", [""])[0]
+
+        results.append({
+            "title": title_tag.get_text(strip=True),
+            "url": url,
+            "snippet": snippet_tag.get_text(strip=True) if snippet_tag else "",
+        })
+        if len(results) >= num_results:
+            break
+
+    return results
+
+
+async def _search_baidu(query: str, num_results: int, region: Optional[str]) -> List[Dict[str, Optional[str]]]:
+    """Search via Baidu HTML interface."""
+    search_url = "https://www.baidu.com/s"
+    params: Dict[str, str] = {"wd": query, "rn": str(min(num_results, 50))}
+
+    baidu_headers = _HEADERS.copy()
+    baidu_headers["Accept-Language"] = region or "zh-CN,zh;q=0.9"
+
+    async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
+        response = await client.get(search_url, params=params, headers=baidu_headers)
+        response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    results: List[Dict[str, Optional[str]]] = []
+
+    for div in soup.select("div.result, div.result-op"):
+        title_tag = div.select_one("h3 a, h3.t a")
+        snippet_tag = div.select_one("span.c-abstract, div.c-abstract")
+        if not title_tag:
+            continue
+
+        results.append({
+            "title": title_tag.get_text(strip=True),
+            "url": title_tag.get("href"),
+            "snippet": snippet_tag.get_text(strip=True) if snippet_tag else "",
+        })
+        if len(results) >= num_results:
+            break
+
+    return results
+
+
+_ENGINE_MAP = {
+    SearchEngine.DUCKDUCKGO: _search_duckduckgo,
+    SearchEngine.BING: _search_bing,
+    SearchEngine.GOOGLE: _search_google,
+    SearchEngine.BAIDU: _search_baidu,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +390,6 @@ async def agent_write_file(params: WriteFileInput) -> str:
         if params.create_dirs:
             target.parent.mkdir(parents=True, exist_ok=True)
 
-        mode = "a" if params.append else "w"
         target.write_text(params.content, encoding=params.encoding)
 
         return _format_success(
@@ -320,75 +495,27 @@ async def agent_execute_command(params: ExecuteCommandInput) -> str:
     },
 )
 async def agent_web_search(params: WebSearchInput) -> str:
-    """Search the web using DuckDuckGo and return a list of results.
+    """Search the web using the specified search engine and return results.
 
-    Each result contains a title, URL, and short snippet. This tool performs
-    an anonymous search; no API key is required.
+    Supported engines: duckduckgo (default), bing, google, baidu.
+    Each result contains a title, URL, and short snippet. No API key is required.
 
     Args:
-        params (WebSearchInput): Validated search parameters.
+        params (WebSearchInput): Validated search parameters including engine selection.
 
     Returns:
-        str: JSON string with keys 'success', 'query', and 'results'.
+        str: JSON string with keys 'success', 'query', 'engine', and 'results'.
     """
-    search_url = "https://html.duckduckgo.com/html/"
-    payload: Dict[str, str] = {"q": params.query}
-    if params.region:
-        payload["kl"] = params.region
-
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Content-Type": "application/x-www-form-urlencoded",
-    }
+    search_fn = _ENGINE_MAP.get(params.engine)
+    if not search_fn:
+        return _format_error(f"Unsupported search engine: {params.engine}. Choose from: {', '.join(e.value for e in SearchEngine)}")
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=20.0) as client:
-            response = await client.post(search_url, data=payload, headers=headers)
-            response.raise_for_status()
-
-        soup = BeautifulSoup(response.text, "html.parser")
-        results: List[Dict[str, Optional[str]]] = []
-
-        for result in soup.select(".result"):
-            title_tag = result.select_one(".result__a")
-            snippet_tag = result.select_one(".result__snippet")
-            if not title_tag:
-                continue
-
-            title = title_tag.get_text(strip=True)
-            link = title_tag.get("href")
-            snippet = snippet_tag.get_text(strip=True) if snippet_tag else ""
-
-            results.append(
-                {
-                    "title": title,
-                    "url": link,
-                    "snippet": snippet,
-                }
-            )
-
-            if len(results) >= params.num_results:
-                break
-
-        if not results:
-            # Fallback: DuckDuckGo sometimes returns different HTML structures.
-            for link in soup.select("a.result__a"):
-                title = link.get_text(strip=True)
-                href = link.get("href")
-                if title and href:
-                    results.append({"title": title, "url": href, "snippet": ""})
-                if len(results) >= params.num_results:
-                    break
-
+        results = await search_fn(params.query, params.num_results, params.region)
         return _format_success(
             {
                 "query": params.query,
+                "engine": params.engine.value,
                 "count": len(results),
                 "results": results,
             }
