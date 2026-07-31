@@ -49,6 +49,7 @@ except Exception:  # pragma: no cover - only hit when running from a checkout
 
 mcp = FastMCP("agent_mcp")
 
+
 DEFAULT_TIMEOUT = 60.0
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MiB
 
@@ -63,14 +64,42 @@ MEMORY_FILE: Path = Path(
 ).expanduser().resolve()
 
 # Skills directory: each subdirectory or file is treated as a discoverable skill.
-# Override with the LMSTUDIO_AGENT_SKILLS_DIR environment variable.
-_DEFAULT_SKILLS_DIR = Path.cwd() / "skills"
+# Default lives under the user's home so it is stable regardless of the cwd
+# LM Studio uses to launch the server. Override with the
+# LMSTUDIO_AGENT_SKILLS_DIR environment variable.
+_DEFAULT_BASE_DIR = Path.home() / ".lmstudio_agent_mcp"
+_DEFAULT_SKILLS_DIR = _DEFAULT_BASE_DIR / "skills"
 SKILLS_DIR: Path = Path(
     os.environ.get("LMSTUDIO_AGENT_SKILLS_DIR", _DEFAULT_SKILLS_DIR)
 ).expanduser().resolve()
 
 # Process-wide lock guarding the memory file from concurrent write corruption.
 _memory_lock = RLock()
+
+
+# ---------------------------------------------------------------------------
+# Storage bootstrap
+# ---------------------------------------------------------------------------
+
+def _ensure_storage() -> None:
+    """Create the memory file's parent directory and the skills directory.
+
+    Called once when the server module is imported so users do not have to
+    create ~/.lmstudio_agent_mcp/ by hand before adding skills or memory.
+    """
+    try:
+        MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # If we cannot create it, the in-memory store still works; reads/writes
+        # will surface a clear error when accessed.
+        pass
+    try:
+        SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
+
+_ensure_storage()
 
 
 # ---------------------------------------------------------------------------
