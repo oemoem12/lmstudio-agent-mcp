@@ -67,10 +67,11 @@ MEMORY_FILE: Path = Path(
 # Default lives under the user's home so it is stable regardless of the cwd
 # LM Studio uses to launch the server. Override with the
 # LMSTUDIO_AGENT_SKILLS_DIR environment variable.
-_DEFAULT_BASE_DIR = Path.home() / ".lmstudio_agent_mcp"
-_DEFAULT_SKILLS_DIR = _DEFAULT_BASE_DIR / "skills"
+#
+# Default: ~/.agents/skills/  (user's personal agents)
 SKILLS_DIR: Path = Path(
-    os.environ.get("LMSTUDIO_AGENT_SKILLS_DIR", _DEFAULT_SKILLS_DIR)
+    os.environ.get("LMSTUDIO_AGENT_SKILLS_DIR")
+    or str(Path.home() / ".agents" / "skills")
 ).expanduser().resolve()
 
 # Process-wide lock guarding the memory file from concurrent write corruption.
@@ -669,10 +670,17 @@ def _read_description(path: Path) -> str:
 def _discover_skills(skills_dir: Path) -> List[Dict[str, Any]]:
     """Walk a skills directory and produce a list of skill metadata records.
 
-    A skill is either:
+    A skill is one of:
       - a subdirectory containing `main.py` (or `run.py`) with a callable
-        `run(input, **kwargs)` function, plus an optional `SKILL.md`, or
+        `run(input, **kwargs)` function. An optional `SKILL.md` next to it
+        provides the description.
+      - a subdirectory containing `SKILL.md` (with optional `scripts/`,
+        `reference/`, etc. siblings) — treated as a markdown skill that
+        returns the SKILL.md contents.
       - a single `.py` / `.sh` / `.md` file at the top level.
+
+    When a subdirectory has both a Python entrypoint and a SKILL.md, the
+    Python entrypoint wins (more specific).
     """
     if not skills_dir.exists() or not skills_dir.is_dir():
         return []
@@ -682,6 +690,7 @@ def _discover_skills(skills_dir: Path) -> List[Dict[str, Any]]:
     for child in sorted(skills_dir.iterdir()):
         if not child.is_dir() or child.name.startswith((".", "_")):
             continue
+        # Prefer a Python entrypoint if present.
         entry: Optional[Dict[str, Any]] = None
         for candidate in ("main.py", "run.py"):
             script = child / candidate
@@ -693,6 +702,16 @@ def _discover_skills(skills_dir: Path) -> List[Dict[str, Any]]:
                     "description": _read_description(child / "SKILL.md"),
                 }
                 break
+        if entry is None:
+            # Fall back to a SKILL.md (markdown-style skill).
+            skill_md = child / "SKILL.md"
+            if skill_md.is_file():
+                entry = {
+                    "name": child.name,
+                    "type": "markdown",
+                    "path": str(skill_md),
+                    "description": _read_description(skill_md),
+                }
         if entry is not None:
             skills.append(entry)
 
