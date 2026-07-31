@@ -1,4 +1,9 @@
-mcp>=1.6.0
-pydantic>=2.0
-httpx>=0.27.0
-beautifulsoup4>=4.12.0
+# Runtime dependencies are declared in pyproject.toml and installed automatically
+# by `pip install lmstudio-agent-mcp`. This file is kept for legacy tooling and
+# for users who prefer to install the project in editable mode without
+# re-resolving transitive dependencies:
+#
+#   pip install -e .
+#
+# See pyproject.toml for the authoritative dependency list.
+-r ./requirements.d/constraints.txt

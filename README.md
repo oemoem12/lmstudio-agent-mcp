@@ -25,27 +25,64 @@ A lightweight MCP (Model Context Protocol) server that provides local agent capa
 
 ## Installation
 
+### Option 1: pip (recommended)
+
 ```bash
-cd lmstudio_agent_mcp
-pip install -r requirements.txt
+pip install lmstudio-agent-mcp
 ```
+
+After installation, two console scripts are available:
+
+- `lmstudio-agent-mcp` — start the MCP server
+- `lmstudio-mcp-config` — print or save the LM Studio MCP config snippet
+
+To generate the config snippet and copy it into LM Studio:
+
+```bash
+lmstudio-mcp-config
+# or, with overrides:
+lmstudio-mcp-config --python /path/to/python --skills-dir ~/my_skills --memory-file ~/my_memory.json
+# or, write directly (merges into existing mcp.json if present):
+lmstudio-mcp-config --write ~/.lmstudio/mcp.json
+```
+
+### Option 2: editable install (development)
+
+```bash
+git clone https://github.com/oemoem12/lmstudio-agent-mcp.git
+cd lmstudio-agent-mcp
+pip install -e .
+```
+
+### Option 3: npm wrapper
+
+```bash
+npm install -g lmstudio-agent-mcp
+lmstudio-agent-mcp setup   # installs the Python package
+```
+
+The npm wrapper invokes `python -m lmstudio_agent_mcp` under the hood, so the
+Python package must be installed first (`pip install lmstudio-agent-mcp`).
 
 ## Usage with LM Studio
 
-Add the following to your LM Studio MCP server configuration:
+After running `lmstudio-mcp-config`, copy the printed JSON into your LM Studio
+MCP server configuration (typically `~/.lmstudio/mcp.json`):
 
 ```json
 {
   "mcpServers": {
     "agent_mcp": {
-      "command": "python3",
-      "args": ["/absolute/path/to/lmstudio_agent_mcp/server.py"]
+      "command": "/usr/bin/python3",
+      "args": ["-m", "lmstudio_agent_mcp"]
     }
   }
 }
 ```
 
-If you are using a virtual environment, replace `python3` with the absolute path to your venv's Python binary (e.g. `/path/to/venv/bin/python`).
+The CLI automatically detects the current Python interpreter. Use `--python` to
+override it (e.g. for a virtualenv) and `--skills-dir` / `--memory-file` to
+customize where the server looks for skills and where it stores memory.
 
 ## Usage with Other MCP Clients
 

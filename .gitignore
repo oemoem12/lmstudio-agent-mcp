@@ -7,3 +7,9 @@ build/
 .venv/
 venv/
 node_modules/
+src/*.egg-info/
+*.egg-info/
+.pytest_cache/
+.tox/
+.mypy_cache/
+.ruff_cache/

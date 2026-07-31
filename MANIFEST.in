@@ -1,0 +1,7 @@
+include README.md
+include requirements.txt
+include requirements.d/constraints.txt
+include pyproject.toml
+include .gitignore
+recursive-include src *.py
+recursive-include src *.typed

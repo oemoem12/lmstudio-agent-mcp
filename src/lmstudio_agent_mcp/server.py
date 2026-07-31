@@ -36,6 +36,13 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from mcp.server.fastmcp import FastMCP
 
+# When installed as a package, import version metadata.
+try:
+    from importlib.metadata import version as _pkg_version
+    __version__ = _pkg_version("lmstudio-agent-mcp")
+except Exception:  # pragma: no cover - only hit when running from a checkout
+    __version__ = "0.0.0+local"
+
 # ---------------------------------------------------------------------------
 # Server setup
 # ---------------------------------------------------------------------------

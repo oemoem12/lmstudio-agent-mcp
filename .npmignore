@@ -1,0 +1,12 @@
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+src/
+requirements.txt
+requirements.d/
+pyproject.toml
+README.md
+.gitignore
+*.md
