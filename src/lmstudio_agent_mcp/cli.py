@@ -108,12 +108,13 @@ def print_config(args: argparse.Namespace) -> int:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="lmstudio-agent-mcp",
-        description="LM Studio Agent MCP server and configuration helper.",
+        description="LM Studio Agent MCP server and configuration helper. "
+                    "When no subcommand is given, the MCP server is started (equivalent to 'serve').",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command")
 
     serve = sub.add_parser("serve", help="Start the MCP server (stdio transport).")
-    serve.set_defaults(func=_run_serve)
+    serve.set_defaults(func=_run_serve, command="serve")
 
     cfg = sub.add_parser("config", help="Print or save the LM Studio MCP config snippet.")
     cfg.add_argument("--name", default="agent_mcp", help="Server name (default: agent_mcp).")
@@ -136,6 +137,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Top-level --version works regardless of subcommand.
     parser.add_argument("--version", action="version", version=f"lmstudio-agent-mcp {__version__}")
+    # When no subcommand is given, default to starting the server.
+    parser.set_defaults(func=_run_serve, command="serve")
 
     args = parser.parse_args(argv)
     return args.func(args)

@@ -29,11 +29,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from threading import RLock
-from typing import Any, Callable, Dict, List, Optional
+from typing import Annotated, Any, Callable, Dict, List, Optional
 
 import httpx
 from bs4 import BeautifulSoup
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import Field
 from mcp.server.fastmcp import FastMCP
 
 # When installed as a package, import version metadata.
@@ -107,132 +107,6 @@ class SearchEngine(str, Enum):
     BING = "bing"
     GOOGLE = "google"
     BAIDU = "baidu"
-
-
-class ReadFileInput(BaseModel):
-    """Input model for reading a file."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    path: str = Field(..., description="Absolute or relative path to the file to read.", min_length=1)
-    offset: int = Field(default=0, description="Number of lines to skip from the beginning.", ge=0)
-    limit: Optional[int] = Field(default=200, description="Maximum number of lines to return (null = unlimited).", ge=1)
-    encoding: str = Field(default="utf-8", description="Text encoding to use when reading the file.")
-
-
-class WriteFileInput(BaseModel):
-    """Input model for writing a file."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    path: str = Field(..., description="Absolute or relative path to the file to write.", min_length=1)
-    content: str = Field(..., description="Text content to write to the file.")
-    encoding: str = Field(default="utf-8", description="Text encoding to use when writing the file.")
-    append: bool = Field(default=False, description="If True, append to the file instead of overwriting.")
-    create_dirs: bool = Field(default=True, description="If True, create parent directories when they do not exist.")
-
-
-class ExecuteCommandInput(BaseModel):
-    """Input model for executing a shell command."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    command: str = Field(..., description="Shell command to execute. Pipes and redirections are supported.", min_length=1)
-    working_directory: Optional[str] = Field(default=None, description="Working directory for the command. Defaults to the server process cwd.")
-    timeout: float = Field(default=DEFAULT_TIMEOUT, description="Maximum execution time in seconds.", ge=1.0, le=600.0)
-    env: Optional[Dict[str, str]] = Field(default=None, description="Additional environment variables to set or override.")
-    shell: bool = Field(default=True, description="Execute the command through the system shell (required for pipes/redirects).")
-
-    @field_validator("working_directory")
-    @classmethod
-    def _validate_working_directory(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return None
-        resolved = _resolve_path(v)
-        if not resolved.is_dir():
-            raise ValueError(f"Working directory does not exist: {resolved}")
-        return str(resolved)
-
-
-class WebSearchInput(BaseModel):
-    """Input model for web search."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    query: str = Field(..., description="Search query string.", min_length=1, max_length=500)
-    engine: SearchEngine = Field(default=SearchEngine.DUCKDUCKGO, description="Search engine to use: 'duckduckgo', 'bing', 'google', or 'baidu'.")
-    num_results: int = Field(default=5, description="Maximum number of results to return.", ge=1, le=20)
-    region: Optional[str] = Field(default=None, description="Optional region/locale code for search results (e.g. 'wt-wt', 'us-en', 'zh-cn').")
-
-
-class MemorySaveInput(BaseModel):
-    """Input model for saving a memory entry."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    key: str = Field(..., description="Unique key to identify this memory entry.", min_length=1, max_length=200)
-    value: str = Field(..., description="Content to remember.")
-    category: str = Field(default="general", description="Logical bucket for the entry (e.g. 'user_preference', 'project_note').", max_length=64)
-    tags: List[str] = Field(default_factory=list, description="Optional list of tags for retrieval filtering.", max_length=32)
-    overwrite: bool = Field(default=True, description="If False, fail when the key already exists.")
-
-
-class MemoryLoadInput(BaseModel):
-    """Input model for loading a single memory entry."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    key: str = Field(..., description="Key of the memory entry to load.", min_length=1, max_length=200)
-
-
-class MemoryDeleteInput(BaseModel):
-    """Input model for deleting a memory entry."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    key: str = Field(..., description="Key of the memory entry to delete.", min_length=1, max_length=200)
-
-
-class MemoryListInput(BaseModel):
-    """Input model for listing memory entries."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    category: Optional[str] = Field(default=None, description="Only return entries in this category.")
-    tag: Optional[str] = Field(default=None, description="Only return entries carrying this tag.")
-    limit: int = Field(default=100, description="Maximum number of entries to return.", ge=1, le=1000)
-
-
-class MemorySearchInput(BaseModel):
-    """Input model for full-text searching across memory entries."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    query: str = Field(..., description="Substring or regex to look for in keys, values, and tags.", min_length=1, max_length=500)
-    use_regex: bool = Field(default=False, description="Treat the query as a regular expression.")
-    category: Optional[str] = Field(default=None, description="Restrict the search to a single category.")
-    limit: int = Field(default=20, description="Maximum number of matches to return.", ge=1, le=200)
-
-
-class SkillListInput(BaseModel):
-    """Input model for listing available skills."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    skills_dir: Optional[str] = Field(default=None, description="Override the skills directory (defaults to LMSTUDIO_AGENT_SKILLS_DIR or ./skills).")
-    pattern: Optional[str] = Field(default=None, description="Optional glob pattern to filter skill names (e.g. 'trans*').")
-
-
-class SkillRunInput(BaseModel):
-    """Input model for invoking a skill."""
-
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    name: str = Field(..., description="Skill name (subdirectory or file basename without extension).", min_length=1, max_length=200)
-    input: str = Field(default="", description="Primary input passed to the skill as the first argument.")
-    args: Dict[str, Any] = Field(default_factory=dict, description="Additional keyword arguments forwarded to the skill.")
-    skills_dir: Optional[str] = Field(default=None, description="Override the skills directory.")
-    timeout: float = Field(default=DEFAULT_TIMEOUT, description="Maximum execution time in seconds.", ge=1.0, le=600.0)
 
 
 # ---------------------------------------------------------------------------
@@ -414,21 +288,29 @@ _ENGINE_MAP = {
         "openWorldHint": False,
     },
 )
-async def agent_read_file(params: ReadFileInput) -> str:
+async def agent_read_file(
+    path: Annotated[str, Field(description="Absolute or relative path to the file to read.", min_length=1)],
+    offset: Annotated[int, Field(description="Number of lines to skip from the beginning.", ge=0)] = 0,
+    limit: Annotated[Optional[int], Field(description="Maximum number of lines to return (null = unlimited).", ge=1)] = 200,
+    encoding: Annotated[str, Field(description="Text encoding to use when reading the file.")] = "utf-8",
+) -> str:
     """Read the contents of a text file.
 
     Returns a JSON object with the file path, requested offset/limit, and the
     lines that were read. Large files are capped at MAX_FILE_SIZE bytes.
 
     Args:
-        params (ReadFileInput): Validated read parameters.
+        path: Absolute or relative path to the file.
+        offset: Number of lines to skip from the beginning.
+        limit: Maximum number of lines to return (null = unlimited).
+        encoding: Text encoding to use.
 
     Returns:
         str: JSON string with keys 'success', 'path', 'offset', 'limit',
              'total_lines', 'truncated', and 'content'.
     """
     try:
-        target = _resolve_path(params.path)
+        target = _resolve_path(path)
 
         if not target.exists():
             return _format_error("File not found.", str(target))
@@ -443,24 +325,24 @@ async def agent_read_file(params: ReadFileInput) -> str:
             )
 
         try:
-            text = target.read_text(encoding=params.encoding)
+            text = target.read_text(encoding=encoding)
         except UnicodeDecodeError as exc:
             return _format_error(
-                f"Could not decode file with encoding '{params.encoding}'. Try a different encoding.",
+                f"Could not decode file with encoding '{encoding}'. Try a different encoding.",
                 str(exc),
             )
 
         lines = text.splitlines()
         total_lines = len(lines)
-        start = min(params.offset, total_lines)
-        end = total_lines if params.limit is None else min(start + params.limit, total_lines)
+        start = min(offset, total_lines)
+        end = total_lines if limit is None else min(start + limit, total_lines)
         selected = lines[start:end]
 
         return _format_success(
             {
                 "path": str(target),
                 "offset": start,
-                "limit": params.limit,
+                "limit": limit,
                 "total_lines": total_lines,
                 "truncated": end < total_lines,
                 "content": "\n".join(selected),
@@ -482,29 +364,39 @@ async def agent_read_file(params: ReadFileInput) -> str:
         "openWorldHint": False,
     },
 )
-async def agent_write_file(params: WriteFileInput) -> str:
+async def agent_write_file(
+    path: Annotated[str, Field(description="Absolute or relative path to the file to write.", min_length=1)],
+    content: Annotated[str, Field(description="Text content to write to the file.")],
+    encoding: Annotated[str, Field(description="Text encoding to use when writing the file.")] = "utf-8",
+    append: Annotated[bool, Field(description="If True, append to the file instead of overwriting.")] = False,
+    create_dirs: Annotated[bool, Field(description="If True, create parent directories when they do not exist.")] = True,
+) -> str:
     """Write text content to a file, optionally creating parent directories.
 
     Args:
-        params (WriteFileInput): Validated write parameters.
+        path: Absolute or relative path to the file.
+        content: Text content to write.
+        encoding: Text encoding to use.
+        append: If True, append to the file instead of overwriting.
+        create_dirs: If True, create parent directories when they do not exist.
 
     Returns:
         str: JSON string with keys 'success', 'path', 'bytes_written', and
              'operation' ('append' or 'overwrite').
     """
     try:
-        target = _resolve_path(params.path)
+        target = _resolve_path(path)
 
-        if params.create_dirs:
+        if create_dirs:
             target.parent.mkdir(parents=True, exist_ok=True)
 
-        target.write_text(params.content, encoding=params.encoding)
+        target.write_text(content, encoding=encoding)
 
         return _format_success(
             {
                 "path": str(target),
-                "bytes_written": len(params.content.encode(params.encoding)),
-                "operation": "append" if params.append else "overwrite",
+                "bytes_written": len(content.encode(encoding)),
+                "operation": "append" if append else "overwrite",
             }
         )
     except PermissionError as exc:
@@ -523,7 +415,13 @@ async def agent_write_file(params: WriteFileInput) -> str:
         "openWorldHint": False,
     },
 )
-async def agent_execute_command(params: ExecuteCommandInput) -> str:
+async def agent_execute_command(
+    command: Annotated[str, Field(description="Shell command to execute. Pipes and redirections are supported.", min_length=1)],
+    working_directory: Annotated[Optional[str], Field(description="Working directory for the command. Defaults to the server process cwd.")] = None,
+    timeout: Annotated[float, Field(description="Maximum execution time in seconds.", ge=1.0, le=600.0)] = DEFAULT_TIMEOUT,
+    env: Annotated[Optional[Dict[str, str]], Field(description="Additional environment variables to set or override.")] = None,
+    shell: Annotated[bool, Field(description="Execute the command through the system shell (required for pipes/redirects).")] = True,
+) -> str:
     """Execute a terminal command and return stdout, stderr, and exit code.
 
     The command runs in a subprocess. By default it is executed through the
@@ -531,39 +429,51 @@ async def agent_execute_command(params: ExecuteCommandInput) -> str:
     Use caution with untrusted input to avoid command injection.
 
     Args:
-        params (ExecuteCommandInput): Validated command parameters.
+        command: Shell command to execute.
+        working_directory: Working directory for the command.
+        timeout: Maximum execution time in seconds.
+        env: Additional environment variables to set or override.
+        shell: Execute the command through the system shell.
 
     Returns:
         str: JSON string with keys 'success', 'command', 'exit_code',
              'stdout', 'stderr', and 'timed_out'.
     """
-    cwd = _resolve_path(params.working_directory) if params.working_directory else None
+    # Validate working directory up-front so the error is friendly.
+    if working_directory is not None:
+        try:
+            cwd = _resolve_path(working_directory)
+            if not cwd.is_dir():
+                return _format_error(f"Working directory does not exist: {cwd}")
+            working_directory = str(cwd)
+        except (OSError, ValueError) as exc:
+            return _format_error("Invalid working directory.", str(exc))
 
-    env = os.environ.copy()
-    if params.env:
-        env.update(params.env)
+    run_env = os.environ.copy()
+    if env:
+        run_env.update(env)
 
     try:
-        if params.shell:
+        if shell:
             proc = await asyncio.create_subprocess_shell(
-                params.command,
+                command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-                env=env,
+                cwd=working_directory,
+                env=run_env,
             )
         else:
             proc = await asyncio.create_subprocess_exec(
-                *shlex.split(params.command),
+                *shlex.split(command),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-                env=env,
+                cwd=working_directory,
+                env=run_env,
             )
 
         try:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(), timeout=params.timeout
+                proc.communicate(), timeout=timeout
             )
             timed_out = False
         except asyncio.TimeoutError:
@@ -577,7 +487,7 @@ async def agent_execute_command(params: ExecuteCommandInput) -> str:
 
         return _format_success(
             {
-                "command": params.command,
+                "command": command,
                 "exit_code": proc.returncode,
                 "stdout": stdout,
                 "stderr": stderr,
@@ -602,28 +512,36 @@ async def agent_execute_command(params: ExecuteCommandInput) -> str:
         "openWorldHint": True,
     },
 )
-async def agent_web_search(params: WebSearchInput) -> str:
+async def agent_web_search(
+    query: Annotated[str, Field(description="Search query string.", min_length=1, max_length=500)],
+    engine: Annotated[SearchEngine, Field(description="Search engine to use: 'duckduckgo', 'bing', 'google', or 'baidu'.")] = SearchEngine.DUCKDUCKGO,
+    num_results: Annotated[int, Field(description="Maximum number of results to return.", ge=1, le=20)] = 5,
+    region: Annotated[Optional[str], Field(description="Optional region/locale code for search results (e.g. 'wt-wt', 'us-en', 'zh-cn').")] = None,
+) -> str:
     """Search the web using the specified search engine and return results.
 
     Supported engines: duckduckgo (default), bing, google, baidu.
     Each result contains a title, URL, and short snippet. No API key is required.
 
     Args:
-        params (WebSearchInput): Validated search parameters including engine selection.
+        query: Search query string.
+        engine: Search engine to use.
+        num_results: Maximum number of results to return.
+        region: Optional region/locale code for search results.
 
     Returns:
         str: JSON string with keys 'success', 'query', 'engine', and 'results'.
     """
-    search_fn = _ENGINE_MAP.get(params.engine)
+    search_fn = _ENGINE_MAP.get(engine)
     if not search_fn:
-        return _format_error(f"Unsupported search engine: {params.engine}. Choose from: {', '.join(e.value for e in SearchEngine)}")
+        return _format_error(f"Unsupported search engine: {engine}. Choose from: {', '.join(e.value for e in SearchEngine)}")
 
     try:
-        results = await search_fn(params.query, params.num_results, params.region)
+        results = await search_fn(query, num_results, region)
         return _format_success(
             {
-                "query": params.query,
-                "engine": params.engine.value,
+                "query": query,
+                "engine": engine.value,
                 "count": len(results),
                 "results": results,
             }
@@ -880,33 +798,45 @@ async def _invoke_skill(
         "openWorldHint": False,
     },
 )
-async def agent_memory_save(params: MemorySaveInput) -> str:
+async def agent_memory_save(
+    key: Annotated[str, Field(description="Unique key to identify this memory entry.", min_length=1, max_length=200)],
+    value: Annotated[str, Field(description="Content to remember.")],
+    category: Annotated[str, Field(description="Logical bucket for the entry (e.g. 'user_preference', 'project_note').", max_length=64)] = "general",
+    tags: Annotated[List[str], Field(description="Optional list of tags for retrieval filtering.", max_length=32)] = None,
+    overwrite: Annotated[bool, Field(description="If False, fail when the key already exists.")] = True,
+) -> str:
     """Persist a key/value memory entry to disk for cross-session recall.
 
     Each entry stores: key, value, category, tags, created_at, updated_at.
     Memory is kept in a JSON file and is safe to read concurrently.
 
     Args:
-        params (MemorySaveInput): Validated save parameters.
+        key: Unique identifier for the entry.
+        value: Content to remember.
+        category: Logical bucket for the entry.
+        tags: Optional list of tags for retrieval filtering.
+        overwrite: If False, fail when the key already exists.
 
     Returns:
         str: JSON with keys 'success', 'key', 'category', 'tags',
              'operation' ('created' or 'updated').
     """
-    tags = _normalize_tags(params.tags)
+    if tags is None:
+        tags = []
+    normalized_tags = _normalize_tags(tags)
     with _memory_lock:
         store = _load_memory()
-        existed = params.key in store
-        if existed and not params.overwrite:
+        existed = key in store
+        if existed and not overwrite:
             return _format_error(
-                f"Memory key '{params.key}' already exists. Set overwrite=true to replace it."
+                f"Memory key '{key}' already exists. Set overwrite=true to replace it."
             )
         now = _now_iso()
-        existing = store.get(params.key) or {}
-        store[params.key] = {
-            "value": params.value,
-            "category": params.category or "general",
-            "tags": tags,
+        existing = store.get(key) or {}
+        store[key] = {
+            "value": value,
+            "category": category or "general",
+            "tags": normalized_tags,
             "created_at": existing.get("created_at", now),
             "updated_at": now,
         }
@@ -916,9 +846,9 @@ async def agent_memory_save(params: MemorySaveInput) -> str:
             return _format_error("Failed to persist memory.", str(exc))
     return _format_success(
         {
-            "key": params.key,
-            "category": params.category or "general",
-            "tags": tags,
+            "key": key,
+            "category": category or "general",
+            "tags": normalized_tags,
             "operation": "updated" if existed else "created",
             "memory_file": str(MEMORY_FILE),
         }
@@ -935,21 +865,23 @@ async def agent_memory_save(params: MemorySaveInput) -> str:
         "openWorldHint": False,
     },
 )
-async def agent_memory_load(params: MemoryLoadInput) -> str:
+async def agent_memory_load(
+    key: Annotated[str, Field(description="Key of the memory entry to load.", min_length=1, max_length=200)],
+) -> str:
     """Load a single memory entry by key.
 
     Args:
-        params (MemoryLoadInput): Validated load parameters.
+        key: Key of the memory entry to load.
 
     Returns:
         str: JSON with keys 'success', 'key', and the full entry payload.
     """
     with _memory_lock:
         store = _load_memory()
-    entry = store.get(params.key)
+    entry = store.get(key)
     if entry is None:
-        return _format_error(f"Memory key '{params.key}' not found.")
-    return _format_success({"key": params.key, **entry})
+        return _format_error(f"Memory key '{key}' not found.")
+    return _format_success({"key": key, **entry})
 
 
 @mcp.tool(
@@ -962,11 +894,17 @@ async def agent_memory_load(params: MemoryLoadInput) -> str:
         "openWorldHint": False,
     },
 )
-async def agent_memory_list(params: MemoryListInput) -> str:
+async def agent_memory_list(
+    category: Annotated[Optional[str], Field(description="Only return entries in this category.")] = None,
+    tag: Annotated[Optional[str], Field(description="Only return entries carrying this tag.")] = None,
+    limit: Annotated[int, Field(description="Maximum number of entries to return.", ge=1, le=1000)] = 100,
+) -> str:
     """List memory entries, optionally filtered by category and/or tag.
 
     Args:
-        params (MemoryListInput): Validated list parameters.
+        category: Only return entries in this category.
+        tag: Only return entries carrying this tag.
+        limit: Maximum number of entries to return.
 
     Returns:
         str: JSON with keys 'success', 'count', and 'entries'.
@@ -975,13 +913,13 @@ async def agent_memory_list(params: MemoryListInput) -> str:
         store = _load_memory()
 
     entries: List[Dict[str, Any]] = []
-    for key, entry in store.items():
-        if params.category and entry.get("category") != params.category:
+    for k, entry in store.items():
+        if category and entry.get("category") != category:
             continue
-        if params.tag and params.tag not in (entry.get("tags") or []):
+        if tag and tag not in (entry.get("tags") or []):
             continue
-        entries.append(_entry_summary(key, entry))
-        if len(entries) >= params.limit:
+        entries.append(_entry_summary(k, entry))
+        if len(entries) >= limit:
             break
 
     entries.sort(key=lambda e: e.get("updated_at") or "", reverse=True)
@@ -998,25 +936,27 @@ async def agent_memory_list(params: MemoryListInput) -> str:
         "openWorldHint": False,
     },
 )
-async def agent_memory_delete(params: MemoryDeleteInput) -> str:
+async def agent_memory_delete(
+    key: Annotated[str, Field(description="Key of the memory entry to delete.", min_length=1, max_length=200)],
+) -> str:
     """Delete a single memory entry by key.
 
     Args:
-        params (MemoryDeleteInput): Validated delete parameters.
+        key: Key of the memory entry to delete.
 
     Returns:
         str: JSON with keys 'success', 'key', and 'deleted' (bool).
     """
     with _memory_lock:
         store = _load_memory()
-        if params.key not in store:
-            return _format_error(f"Memory key '{params.key}' not found.")
-        del store[params.key]
+        if key not in store:
+            return _format_error(f"Memory key '{key}' not found.")
+        del store[key]
         try:
             _save_memory(store)
         except OSError as exc:
             return _format_error("Failed to persist memory after delete.", str(exc))
-    return _format_success({"key": params.key, "deleted": True})
+    return _format_success({"key": key, "deleted": True})
 
 
 @mcp.tool(
@@ -1029,45 +969,53 @@ async def agent_memory_delete(params: MemoryDeleteInput) -> str:
         "openWorldHint": False,
     },
 )
-async def agent_memory_search(params: MemorySearchInput) -> str:
+async def agent_memory_search(
+    query: Annotated[str, Field(description="Substring or regex to look for in keys, values, and tags.", min_length=1, max_length=500)],
+    use_regex: Annotated[bool, Field(description="Treat the query as a regular expression.")] = False,
+    category: Annotated[Optional[str], Field(description="Restrict the search to a single category.")] = None,
+    limit: Annotated[int, Field(description="Maximum number of matches to return.", ge=1, le=200)] = 20,
+) -> str:
     """Search memory entries by substring or regex across key, value, and tags.
 
     Args:
-        params (MemorySearchInput): Validated search parameters.
+        query: Substring or regex to look for.
+        use_regex: Treat the query as a regular expression.
+        category: Restrict the search to a single category.
+        limit: Maximum number of matches to return.
 
     Returns:
         str: JSON with keys 'success', 'count', and 'matches'.
     """
     matcher: Callable[[str], bool]
-    if params.use_regex:
+    if use_regex:
         try:
-            pattern = re.compile(params.query, re.IGNORECASE)
+            pattern = re.compile(query, re.IGNORECASE)
         except re.error as exc:
             return _format_error("Invalid regular expression.", str(exc))
         matcher = lambda text: bool(pattern.search(text))
     else:
-        needle = params.query.lower()
+        needle = query.lower()
         matcher = lambda text: needle in text.lower()
 
     with _memory_lock:
         store = _load_memory()
 
     matches: List[Dict[str, Any]] = []
-    for key, entry in store.items():
-        if params.category and entry.get("category") != params.category:
+    for k, entry in store.items():
+        if category and entry.get("category") != category:
             continue
         haystack = " ".join([
-            key,
+            k,
             str(entry.get("value", "")),
             " ".join(entry.get("tags") or []),
         ])
         if matcher(haystack):
-            matches.append(_entry_summary(key, entry))
-            if len(matches) >= params.limit:
+            matches.append(_entry_summary(k, entry))
+            if len(matches) >= limit:
                 break
 
     return _format_success(
-        {"query": params.query, "regex": params.use_regex, "count": len(matches), "matches": matches}
+        {"query": query, "regex": use_regex, "count": len(matches), "matches": matches}
     )
 
 
@@ -1085,7 +1033,10 @@ async def agent_memory_search(params: MemorySearchInput) -> str:
         "openWorldHint": False,
     },
 )
-async def agent_list_skills(params: SkillListInput) -> str:
+async def agent_list_skills(
+    skills_dir: Annotated[Optional[str], Field(description="Override the skills directory (defaults to LMSTUDIO_AGENT_SKILLS_DIR or ./skills).")] = None,
+    pattern: Annotated[Optional[str], Field(description="Optional glob pattern to filter skill names (e.g. 'trans*').")] = None,
+) -> str:
     """Discover and list skills available in the configured skills directory.
 
     A skill is one of:
@@ -1095,12 +1046,13 @@ async def agent_list_skills(params: SkillListInput) -> str:
       - `<skills_dir>/<name>.md` — Markdown skill (returns the file contents)
 
     Args:
-        params (SkillListInput): Validated list parameters.
+        skills_dir: Override the skills directory.
+        pattern: Optional glob pattern to filter skill names.
 
     Returns:
         str: JSON with keys 'success', 'skills_dir', 'count', and 'skills'.
     """
-    base = _resolve_skills_dir(params.skills_dir)
+    base = _resolve_skills_dir(skills_dir)
     if not base.exists():
         return _format_error(
             f"Skills directory does not exist: {base}. Create it or set LMSTUDIO_AGENT_SKILLS_DIR."
@@ -1109,8 +1061,8 @@ async def agent_list_skills(params: SkillListInput) -> str:
         return _format_error(f"Skills path is not a directory: {base}")
 
     discovered = _discover_skills(base)
-    if params.pattern:
-        discovered = [s for s in discovered if fnmatch.fnmatch(s["name"], params.pattern)]
+    if pattern:
+        discovered = [s for s in discovered if fnmatch.fnmatch(s["name"], pattern)]
 
     return _format_success(
         {"skills_dir": str(base), "count": len(discovered), "skills": discovered}
@@ -1127,7 +1079,13 @@ async def agent_list_skills(params: SkillListInput) -> str:
         "openWorldHint": False,
     },
 )
-async def agent_run_skill(params: SkillRunInput) -> str:
+async def agent_run_skill(
+    name: Annotated[str, Field(description="Skill name (subdirectory or file basename without extension).", min_length=1, max_length=200)],
+    input: Annotated[str, Field(description="Primary input passed to the skill as the first argument.")] = "",
+    args: Annotated[Dict[str, Any], Field(description="Additional keyword arguments forwarded to the skill.")] = None,
+    skills_dir: Annotated[Optional[str], Field(description="Override the skills directory.")] = None,
+    timeout: Annotated[float, Field(description="Maximum execution time in seconds.", ge=1.0, le=600.0)] = DEFAULT_TIMEOUT,
+) -> str:
     """Invoke a discovered skill by name and return its result.
 
     Python skills are imported in-process and their `run(input, **kwargs)`
@@ -1135,27 +1093,33 @@ async def agent_run_skill(params: SkillRunInput) -> str:
     skills simply return the file contents.
 
     Args:
-        params (SkillRunInput): Validated skill invocation parameters.
+        name: Skill name.
+        input: Primary input passed to the skill as the first argument.
+        args: Additional keyword arguments forwarded to the skill.
+        skills_dir: Override the skills directory.
+        timeout: Maximum execution time in seconds.
 
     Returns:
         str: JSON with keys 'success', 'name', 'type', 'stdout', 'stderr',
              'exit_code', and 'timed_out'.
     """
-    base = _resolve_skills_dir(params.skills_dir)
+    if args is None:
+        args = {}
+    base = _resolve_skills_dir(skills_dir)
     if not base.exists() or not base.is_dir():
         return _format_error(
             f"Skills directory does not exist: {base}. Create it or set LMSTUDIO_AGENT_SKILLS_DIR."
         )
 
     discovered = _discover_skills(base)
-    skill = next((s for s in discovered if s["name"] == params.name), None)
+    skill = next((s for s in discovered if s["name"] == name), None)
     if skill is None:
         names = ", ".join(s["name"] for s in discovered) or "(none)"
         return _format_error(
-            f"Skill '{params.name}' not found in {base}. Available: {names}"
+            f"Skill '{name}' not found in {base}. Available: {names}"
         )
 
-    result = await _invoke_skill(skill, params.input, params.args, params.timeout)
+    result = await _invoke_skill(skill, input, args, timeout)
     success = result["exit_code"] == 0 and not result["timed_out"]
     payload: Dict[str, Any] = {
         "name": skill["name"],
