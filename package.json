@@ -1,6 +1,6 @@
 {
   "name": "lmstudio-agent-mcp",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "MCP server providing agent capabilities for LM Studio: file I/O, terminal execution, web search, persistent memory, and skill loading.",
   "main": "index.js",
   "bin": {

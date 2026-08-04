@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lmstudio-agent-mcp"
-version = "1.2.0"
+version = "1.2.1"
 description = "MCP server providing agent capabilities for LM Studio: file I/O, terminal execution, web search, persistent memory, and skill loading."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,7 +32,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "mcp>=1.0.0",
+    "mcp>=1.0.0,<2.0.0",
     "pydantic>=2.0",
     "httpx>=0.25",
     "beautifulsoup4>=4.12",
