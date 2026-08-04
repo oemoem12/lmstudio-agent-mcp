@@ -1,8 +1,18 @@
 # Agent MCP Server for LM Studio
 
+> [!WARNING]
+> **Do not install 1.2.0** — it has an undeclared `mcp>=1.0.0` dependency
+> that resolves to `mcp 2.0.0`, which renamed `FastMCP` to `MCPServer`
+> and broke every console script with
+> `ModuleNotFoundError: No module named 'mcp.server.fastmcp'`.
+> Use **1.2.1 or later** (the `mcp` pin is now `>=1.0.0,<2.0.0`).
+> 1.2.1 has been verified end-to-end in a fresh venv: install works,
+> all three console scripts start, and every tool responds correctly
+> over stdio MCP.
+
 A lightweight MCP (Model Context Protocol) server that provides local agent capabilities for LM Studio: file I/O, terminal execution, multi-engine web search, persistent key/value memory, and a pluggable skill system.
 
-- 📦 **[PyPI](https://pypi.org/project/lmstudio-agent-mcp/)** — `pip install lmstudio-agent-mcp`
+- 📦 **[PyPI 1.2.1](https://pypi.org/project/lmstudio-agent-mcp/1.2.1/)** — `pip install lmstudio-agent-mcp`
 - 🔌 **Auto-registers with LM Studio** — no manual config editing required
 - 🛠 11 tools, ~14 kB wheel, no heavy dependencies
 
