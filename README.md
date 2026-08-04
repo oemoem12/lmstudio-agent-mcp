@@ -2,6 +2,10 @@
 
 A lightweight MCP (Model Context Protocol) server that provides local agent capabilities for LM Studio: file I/O, terminal execution, multi-engine web search, persistent key/value memory, and a pluggable skill system.
 
+- 📦 **[PyPI](https://pypi.org/project/lmstudio-agent-mcp/)** — `pip install lmstudio-agent-mcp`
+- 🔌 **Auto-registers with LM Studio** — no manual config editing required
+- 🛠 11 tools, ~14 kB wheel, no heavy dependencies
+
 ## Features
 
 | Tool | Description |
@@ -25,49 +29,80 @@ A lightweight MCP (Model Context Protocol) server that provides local agent capa
 
 ## Installation
 
-### Option 1: pip (recommended)
-
 ```bash
 pip install lmstudio-agent-mcp
 ```
 
-After installation, two console scripts are available:
+After installation, three console scripts are available:
 
-- `lmstudio-agent-mcp` — start the MCP server
-- `lmstudio-mcp-config` — print or save the LM Studio MCP config snippet
+| Script | Purpose |
+|---|---|
+| `lmstudio-agent-mcp` | Start the MCP server (`serve` is the default subcommand) |
+| `lmstudio-mcp-setup` | Register this server with LM Studio's `mcp.json` |
+| `lmstudio-mcp-config` | Print or write the LM Studio MCP config snippet |
 
-To generate the config snippet and copy it into LM Studio:
+## Auto-registration with LM Studio
+
+The package registers itself with LM Studio automatically — no copy/paste required.
+
+1. **Editable / source install** — a setuptools `cmdclass` hook appends an
+   `agent_mcp` entry to `~/.lmstudio/mcp.json` immediately after install.
+2. **Wheel install (e.g. from PyPI)** — the first time `lmstudio-agent-mcp`
+   starts it writes the entry silently. To trigger the registration right
+   after install run:
+
+   ```bash
+   lmstudio-mcp-setup
+   ```
+
+The function is idempotent: re-running it is a no-op. Pass `--force` to
+overwrite an existing entry. To opt out, set the environment variable
+`LMSTUDIO_AGENT_NO_AUTOREGISTER=1` before starting the server.
+
+A marker file `~/.lmstudio/.lmstudio_agent_mcp_installed` is written next to
+`mcp.json` so the registration is not repeated unnecessarily. The generated
+snippet uses the installed `lmstudio-agent-mcp` console script as the command
+so no Python interpreter path is baked in:
+
+```json
+{
+  "mcpServers": {
+    "agent_mcp": {
+      "command": "/home/<you>/.local/bin/lmstudio-agent-mcp"
+    }
+  }
+}
+```
+
+To print or write the config snippet manually:
 
 ```bash
 lmstudio-mcp-config
-# or, with overrides:
+# with overrides:
 lmstudio-mcp-config --python /path/to/python --skills-dir ~/my_skills --memory-file ~/my_memory.json
-# or, write directly (merges into existing mcp.json if present):
+# write directly (merges into existing mcp.json if present):
 lmstudio-mcp-config --write ~/.lmstudio/mcp.json
+# use the python module form instead of the console script:
+lmstudio-mcp-config --no-console-script
 ```
 
-### Option 2: editable install (development)
+### Other install methods
 
 ```bash
+# editable install (development)
 git clone https://github.com/oemoem12/lmstudio-agent-mcp.git
 cd lmstudio-agent-mcp
 pip install -e .
-```
 
-### Option 3: npm wrapper
-
-```bash
+# npm wrapper (thin shell around the Python package)
 npm install -g lmstudio-agent-mcp
-lmstudio-agent-mcp setup   # installs the Python package
 ```
-
-The npm wrapper invokes `python -m lmstudio_agent_mcp` under the hood, so the
-Python package must be installed first (`pip install lmstudio-agent-mcp`).
 
 ## Usage with LM Studio
 
-After running `lmstudio-mcp-config`, copy the printed JSON into your LM Studio
-MCP server configuration (typically `~/.lmstudio/mcp.json`):
+Restart LM Studio after running `lmstudio-mcp-setup`. The server will appear in
+the MCP list as `agent_mcp`. The CLI also generates a JSON snippet for
+`mcp.json` automatically; if you prefer to add it by hand:
 
 ```json
 {
@@ -89,25 +124,28 @@ customize where the server looks for skills and where it stores memory.
 The server uses **stdio** transport by default. Start it directly:
 
 ```bash
-python3 server.py
+python3 -m lmstudio_agent_mcp
 ```
 
-For remote access, you can switch to streamable HTTP:
+For remote access, switch to streamable HTTP:
 
 ```python
-# Add to the bottom of server.py
-if __name__ == "__main__":
-    mcp.run(transport="streamable_http", port=8000)
+import lmstudio_agent_mcp
+lmstudio_agent_mcp.mcp.run(transport="streamable_http", port=8000)
 ```
 
 ## Configuration
 
-The server reads two optional environment variables on startup:
+The server reads the following environment variables on startup:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `LMSTUDIO_AGENT_MEMORY_FILE` | `~/.lmstudio_agent_mcp/memory.json` | Path to the persistent memory store |
-| `LMSTUDIO_AGENT_SKILLS_DIR` | `./skills` | Directory scanned for user-defined skills |
+| `LMSTUDIO_AGENT_SKILLS_DIR` | `~/.agents/skills/` | Directory scanned for user-defined skills |
+| `LMSTUDIO_AGENT_NO_AUTOREGISTER` | `0` | Set to `1` to disable silent autoregistration on first serve |
+
+The skills directory also accepts `SKILL.md` (with optional `scripts/`,
+`reference/`, etc. siblings) in addition to `main.py` / `run.py` directories.
 
 ## Tool Reference
 
@@ -229,7 +267,7 @@ Invoke a discovered skill by name.
 
 ## Writing Skills
 
-Place skills under the directory pointed to by `LMSTUDIO_AGENT_SKILLS_DIR` (default `./skills`). Three skill types are supported:
+Place skills under the directory pointed to by `LMSTUDIO_AGENT_SKILLS_DIR` (default `~/.agents/skills/`). Three skill types are supported:
 
 ### Python skill (subdirectory)
 
